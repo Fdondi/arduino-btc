@@ -1,3 +1,6 @@
+# Network SSID and password
+arduino_secrets.h
+
 # Prerequisites
 *.d
 

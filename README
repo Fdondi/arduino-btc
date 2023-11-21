@@ -1,0 +1,7 @@
+Reads Bitcoin prices and prints them. 
+
+TODO: light a led based on price movement. 
+
+To compile, add an arduino_secrets.h file with
+#define SECRET_SSID <Wifi SSID>
+#define SECRET_PASS <Wifi password>
