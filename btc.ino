@@ -22,10 +22,9 @@
 #include <ArduinoJson.h>
 
 #include "arduino_secrets.h" 
-///////please enter your sensitive data in the Secret tab/arduino_secrets.h
-char ssid[] = SECRET_SSID;        // your network SSID (name)
-char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
-int keyIndex = 0;            // your network key Index number (needed only for WEP)
+char ssid[] = SECRET_SSID;    // network SSID
+char pass[] = SECRET_PASS;    // network password (use for WPA, or use as key for WEP)
+int keyIndex = 0;             // network key Index number (needed only for WEP)
 
 int status = WL_IDLE_STATUS;
 
@@ -34,12 +33,16 @@ WiFiClient client;
 
 // server address:
 char server[] = "api.coindesk.com";
-//IPAddress server(64,131,82,241);
 
-unsigned long lastConnectionTime = 0;            // last time you connected to the server, in milliseconds
 const unsigned long postingInterval = 10L * 1000L; // delay between updates, in milliseconds
 
+float currentPrice = -1;
+float averagePrice = -1;
+const float exponentialFactor = 0.9; // 1.0 = never change price, 0.0 change immediately to last price
+
 void setup() {
+
+
   //Initialize serial and wait for port to open:
   Serial.begin(9600);
   while (!Serial) {
@@ -65,12 +68,58 @@ void setup() {
   }
   // you're connected now, so print out the status:
   printWiFiStatus();
+
+  // ensure we have a connection and price
+  while(!doHttpRequest() || !readHttpJsonResponse()) {
+    delay(1000);
+  }
+  averagePrice = currentPrice;
+  Serial.print("First price: ");
+  Serial.println(currentPrice);
 }
 
 void loop() {
-  // if there's incoming data from the net connection.
-  // send it out the serial port.  This is for debugging
-  // purposes only:
+  unsigned long connStart = millis();
+
+  updateAverageWithPreviousCurrentPrice();
+  // send HTTP request, reconnecting if needed.
+  while(!doHttpRequest() || !readHttpJsonResponse()) {
+    delay(1000);
+  }
+  doTheBlink();
+
+  // wait until the end of the delay time
+  unsigned long elapsedTime = millis() - connStart;
+  Serial.print("Elapsed: ");
+  Serial.println(elapsedTime);
+  delay(postingInterval - elapsedTime);
+}
+
+void doTheBlink(){
+  Serial.print("New price: ");
+  Serial.println(currentPrice);
+  Serial.print("Previous average: ");
+  Serial.println(averagePrice);
+
+  const int scale = 10000;
+  const float change = scale * (currentPrice/averagePrice -1);
+  if(change > 0){
+    Serial.print("INCREASED by ");
+  } else {
+    Serial.print("DECREASED by ");
+  }
+  Serial.print(change);
+  Serial.print(" per ");
+  Serial.println(scale);
+}
+
+void updateAverageWithPreviousCurrentPrice(){
+  // TODO update to consider how much time since last update
+  averagePrice = averagePrice * exponentialFactor + currentPrice * (1.0- exponentialFactor);
+}
+
+bool readHttpJsonResponse() {
+  // get rid of headers
   while (client.connected()) {
     String line = client.readStringUntil('\n');
     if (line == "\r") {
@@ -78,6 +127,7 @@ void loop() {
     }
   }
 
+  // if there is data, read it.
   while (client.available()) {
     String jsonResponse = client.readString();
     DynamicJsonDocument doc(1024);
@@ -85,44 +135,38 @@ void loop() {
     if (error) {
       Serial.print("deserializeJson() failed: ");
       Serial.println(error.c_str());
-      return;
+      Serial.println("Original was:");
+      Serial.println(jsonResponse);
+      return false;
     }
-    const float usdRateFloat = doc["bpi"]["USD"]["rate_float"];
-    Serial.print("USD Rate Float: ");
-    Serial.println(usdRateFloat);
+    currentPrice = doc["bpi"]["USD"]["rate_float"];
   }
-
-  // if ten seconds have passed since your last connection,
-  // then connect again and send data:
-  if (millis() - lastConnectionTime > postingInterval) {
-    httpRequest();
-  }
-
+  return true;
 }
 
 // this method makes a HTTP connection to the server:
-void httpRequest() {
-  // close any connection before send a new request.
-  // This will free the socket on the WiFi shield
-  client.stop();
+bool doHttpRequest() {
+  // Check if the client is already connected
+  if (!client.connected()) {
+    // Not connected, so try to connect
+    if (!client.connect(server, 80)) {
+      Serial.println("Connection failed");
+      return false;
+    }
+  }
 
   // if there's a successful connection:
-  if (client.connect(server, 80)) {
-    Serial.println("connecting...");
-    // send the HTTP PUT request:
-    client.println("GET /v1/bpi/currentprice.json HTTP/1.1");
-    client.println("Host: api.coindesk.com");
-    client.println("User-Agent: ArduinoWiFi/1.1");
-    client.println("Connection: close");
-    client.println();
+  Serial.println("Launching connection");
+  Serial.println("");
+  // send the HTTP GET request:
+  client.println("GET /v1/bpi/currentprice.json HTTP/1.1");
+  client.print("Host: ");
+  client.println(server);
+  client.println("User-Agent: ArduinoWiFi/1.1");
+  client.println("Connection: keep-alive");
+  client.println();
 
-    // note the time that the connection was made:
-    lastConnectionTime = millis();
-  }
-  else {
-    // if you couldn't make a connection:
-    Serial.println("connection failed");
-  }
+  return true;
 }
 
 
