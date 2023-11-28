@@ -36,8 +36,7 @@ char server[] = "api.coindesk.com";
 
 const unsigned long updateInterval = 10L * 1000L; // delay between updates, in milliseconds
 unsigned long nextUpdate = 0;
-unsigned long blinkInterval = 0;
-unsigned long nextBlink = 0;
+
 
 float currentPrice = -1;
 float averagePrice = -1;
@@ -67,8 +66,25 @@ public:
   void toggle(){
     if(is_on){ off(); } else { on(); }
   }
-} active_led;
+};
 
+class BlinkingLed: public ActiveLed {
+  unsigned long blinkInterval = 0;
+  unsigned long nextBlink = 0;
+public:
+  void blink(){
+    toggle();
+    nextBlink = millis() + blinkInterval;
+  }
+  void setBlinkInterval(unsigned long newInterval){
+    blinkInterval = newInterval;
+    nextBlink = millis() + blinkInterval;
+    on();
+  }
+  bool is_overdue(unsigned long currentTime = millis()){
+    return currentTime > nextBlink;
+  }
+} blinking_led;
 
 void setup() {
   // Initialize pins
@@ -112,15 +128,14 @@ void setup() {
 void loop() {
   const unsigned int currentTime = millis();
   if (currentTime > nextUpdate){
-    active_led.off();
+    blinking_led.off();
     nextUpdate = currentTime + updateInterval;
     updateAverageWithPreviousCurrentPrice();
     // send HTTP request, reconnecting if needed.
     readNewPrice();
-    setupTheBlink();
-    doTheBlink();  // Blink immediately
-  } else if(currentTime > nextBlink){
-    doTheBlink();
+    blinking_led.setBlinkInterval(getBlinkInterval());
+  } else if(blinking_led.is_overdue(currentTime)){
+    blinking_led.blink();
   }
 }
 
@@ -138,19 +153,14 @@ void readNewPrice(){
   digitalWrite(LED_BUILTIN, LOW);
 }
 
-void doTheBlink(){
-  active_led.toggle();
-  nextBlink = millis() + blinkInterval;
-}
-
-void setupTheBlink(){
+unsigned long getBlinkInterval(){
   const int scale = 10000;
   const float change = scale * (currentPrice/averagePrice -1);
   if(change > 0){
-    active_led.switch_led(LED_GREEN);
+    blinking_led.switch_led(LED_GREEN);
     Serial.print("INCREASED by ");
   } else {
-    active_led.switch_led(LED_RED);
+    blinking_led.switch_led(LED_RED);
     Serial.print("DECREASED by ");
   }
   Serial.print(change);
@@ -160,7 +170,7 @@ void setupTheBlink(){
   // Blink a number of times equal to "change"
   // 2 because 1 blink is 2 toggles, one on and one off
   const float blinksPerInterval = 2 * abs(change);
-  blinkInterval = updateInterval / blinksPerInterval;
+  return updateInterval / blinksPerInterval;
 }
 
 void updateAverageWithPreviousCurrentPrice(){
