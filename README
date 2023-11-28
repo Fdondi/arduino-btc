@@ -1,7 +1,10 @@
-Reads Bitcoin prices and prints them. 
-
-TODO: light a led based on price movement. 
-
-To compile, add an arduino_secrets.h file with
+IMPORTANT: To compile, add an arduino_secrets.h file with
 #define SECRET_SSID <Wifi SSID>
 #define SECRET_PASS <Wifi password>
+
+Reads Bitcoin prices and lights a LED based on how much the price is moving. 
+Currently, RED led is mapped to PIN 8, GREEN to pin 10. 
+
+LED of the appropriate color will blink at the rate of <change> ON activations per <update period>; where
+- <change> is the absolute value of the percent difference between the new peice and the old mobile average. 
+- <update period> is the time between API calls, currently 10 seconds. 

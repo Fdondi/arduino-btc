@@ -34,7 +34,10 @@ WiFiClient client;
 // server address:
 char server[] = "api.coindesk.com";
 
-const unsigned long postingInterval = 10L * 1000L; // delay between updates, in milliseconds
+const unsigned long updateInterval = 10L * 1000L; // delay between updates, in milliseconds
+unsigned long nextUpdate = 0;
+unsigned long blinkInterval = 0;
+unsigned long nextBlink = 0;
 
 float currentPrice = -1;
 float averagePrice = -1;
@@ -42,6 +45,30 @@ const float exponentialFactor = 0.9; // 1.0 = never change price, 0.0 change imm
 
 #define LED_RED 8
 #define LED_GREEN 10
+
+class ActiveLed{
+  byte active_led :7;
+  bool is_on      :1;
+public:
+  ActiveLed() : active_led(0), is_on(false) {}
+  void on(){
+    digitalWrite(active_led, HIGH);
+    is_on = true;
+  }
+  void off(){
+    digitalWrite(active_led, LOW);
+    is_on = false;
+  }
+  void switch_led(byte new_led){
+    off(); // switch off old led
+    active_led = new_led;
+    off(); // new led starts off
+  }
+  void toggle(){
+    if(is_on){ off(); } else { on(); }
+  }
+} active_led;
+
 
 void setup() {
   // Initialize pins
@@ -83,18 +110,18 @@ void setup() {
 }
 
 void loop() {
-  unsigned long connStart = millis();
-
-  updateAverageWithPreviousCurrentPrice();
-  // send HTTP request, reconnecting if needed.
-  readNewPrice();
-  doTheBlink();
-
-  // wait until the end of the delay time
-  unsigned long elapsedTime = millis() - connStart;
-  Serial.print("Elapsed: ");
-  Serial.println(elapsedTime);
-  delay(postingInterval - elapsedTime);
+  const unsigned int currentTime = millis();
+  if (currentTime > nextUpdate){
+    active_led.off();
+    nextUpdate = currentTime + updateInterval;
+    updateAverageWithPreviousCurrentPrice();
+    // send HTTP request, reconnecting if needed.
+    readNewPrice();
+    setupTheBlink();
+    doTheBlink();  // Blink immediately
+  } else if(currentTime > nextBlink){
+    doTheBlink();
+  }
 }
 
 void readNewPrice(){
@@ -103,43 +130,44 @@ void readNewPrice(){
   while(!doHttpRequest() || !readHttpJsonResponse()) {
     delay(1000);
   }
+
+  Serial.print("New price: ");
+  Serial.println(currentPrice);
+
   // Turn off led now that we're done
   digitalWrite(LED_BUILTIN, LOW);
 }
 
-void doGreen(){
-  digitalWrite(LED_GREEN, HIGH);
-  digitalWrite(LED_RED, LOW);
-}
-
-void doRed(){
-  digitalWrite(LED_RED, HIGH);
-  digitalWrite(LED_GREEN, LOW);
-}
-
 void doTheBlink(){
-  Serial.print("New price: ");
-  Serial.println(currentPrice);
-  Serial.print("Previous average: ");
-  Serial.println(averagePrice);
+  active_led.toggle();
+  nextBlink = millis() + blinkInterval;
+}
 
+void setupTheBlink(){
   const int scale = 10000;
   const float change = scale * (currentPrice/averagePrice -1);
   if(change > 0){
-    doGreen();
+    active_led.switch_led(LED_GREEN);
     Serial.print("INCREASED by ");
   } else {
-    doRed();
+    active_led.switch_led(LED_RED);
     Serial.print("DECREASED by ");
   }
   Serial.print(change);
   Serial.print(" per ");
   Serial.println(scale);
+
+  // Blink a number of times equal to "change"
+  // 2 because 1 blink is 2 toggles, one on and one off
+  const float blinksPerInterval = 2 * abs(change);
+  blinkInterval = updateInterval / blinksPerInterval;
 }
 
 void updateAverageWithPreviousCurrentPrice(){
   // TODO update to consider how much time since last update
   averagePrice = averagePrice * exponentialFactor + currentPrice * (1.0- exponentialFactor);
+  Serial.print("Average: ");
+  Serial.println(averagePrice);
 }
 
 bool readHttpJsonResponse() {
