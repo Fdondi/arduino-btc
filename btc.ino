@@ -40,8 +40,14 @@ float currentPrice = -1;
 float averagePrice = -1;
 const float exponentialFactor = 0.9; // 1.0 = never change price, 0.0 change immediately to last price
 
-void setup() {
+#define LED_RED 8
+#define LED_GREEN 10
 
+void setup() {
+  // Initialize pins
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_GREEN, OUTPUT);
 
   //Initialize serial and wait for port to open:
   Serial.begin(9600);
@@ -70,9 +76,7 @@ void setup() {
   printWiFiStatus();
 
   // ensure we have a connection and price
-  while(!doHttpRequest() || !readHttpJsonResponse()) {
-    delay(1000);
-  }
+  readNewPrice();
   averagePrice = currentPrice;
   Serial.print("First price: ");
   Serial.println(currentPrice);
@@ -83,9 +87,7 @@ void loop() {
 
   updateAverageWithPreviousCurrentPrice();
   // send HTTP request, reconnecting if needed.
-  while(!doHttpRequest() || !readHttpJsonResponse()) {
-    delay(1000);
-  }
+  readNewPrice();
   doTheBlink();
 
   // wait until the end of the delay time
@@ -93,6 +95,26 @@ void loop() {
   Serial.print("Elapsed: ");
   Serial.println(elapsedTime);
   delay(postingInterval - elapsedTime);
+}
+
+void readNewPrice(){
+  //Set inbuilt led to signal that data is refreshing
+  digitalWrite(LED_BUILTIN, HIGH);
+  while(!doHttpRequest() || !readHttpJsonResponse()) {
+    delay(1000);
+  }
+  // Turn off led now that we're done
+  digitalWrite(LED_BUILTIN, LOW);
+}
+
+void doGreen(){
+  digitalWrite(LED_GREEN, HIGH);
+  digitalWrite(LED_RED, LOW);
+}
+
+void doRed(){
+  digitalWrite(LED_RED, HIGH);
+  digitalWrite(LED_GREEN, LOW);
 }
 
 void doTheBlink(){
@@ -104,8 +126,10 @@ void doTheBlink(){
   const int scale = 10000;
   const float change = scale * (currentPrice/averagePrice -1);
   if(change > 0){
+    doGreen();
     Serial.print("INCREASED by ");
   } else {
+    doRed();
     Serial.print("DECREASED by ");
   }
   Serial.print(change);
