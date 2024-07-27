@@ -1,22 +1,3 @@
-/*
-  Repeating WiFi Web Client
-
- This sketch connects to a a web server and makes a request
- using an Arduino WiFi shield.
-
- Circuit:
- * WiFi shield attached to pins SPI pins and pin 7
-
- created 23 April 2012
- modified 31 May 2012
- by Tom Igoe
- modified 13 Jan 2014
- by Federico Vanzati
-
- http://arduino.cc/en/Tutorial/WiFiWebClientRepeating
- This code is in the public domain.
- */
-
 #include <SPI.h>
 #include <WiFi101.h>
 #include <ArduinoJson.h>
